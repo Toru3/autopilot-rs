@@ -10,9 +10,11 @@
 //!
 //! It also defines functions for taking screenshots of the screen.
 extern crate image;
+extern crate thiserror;
 
+use self::thiserror::Error;
 use geometry::{Point, Rect, Size};
-use image::{DynamicImage, GenericImage, GenericImageView, ImageError, ImageResult, Pixel, Rgba};
+use image::{DynamicImage, GenericImage, GenericImageView, Pixel, Rgba};
 use screen;
 use std;
 
@@ -29,6 +31,18 @@ use internal;
 use scopeguard::guard;
 #[cfg(target_os = "linux")]
 use x11;
+
+#[derive(Debug, Error)]
+pub enum BitmapError {
+    #[error("image error")]
+    ImageError(#[from] image::error::ImageError),
+    #[error("invalid area")]
+    InvalidArea,
+    #[error("capture failed")]
+    CaptureFaild,
+}
+
+pub type BitmapResult<T> = Result<T, BitmapError>;
 
 #[derive(Clone)]
 pub struct Bitmap {
@@ -85,14 +99,14 @@ impl Bitmap {
     }
 
     /// Copies image to pasteboard. Currently only supported on macOS.
-    pub fn copy_to_pasteboard(&self) -> ImageResult<()> {
+    pub fn copy_to_pasteboard(&self) -> BitmapResult<()> {
         self.system_copy_to_pasteboard()
     }
 
     /// Returns new Bitmap created from a portion of another.
-    pub fn cropped(&mut self, rect: Rect) -> ImageResult<Bitmap> {
+    pub fn cropped(&mut self, rect: Rect) -> BitmapResult<Bitmap> {
         if !self.bounds().is_rect_visible(rect) {
-            Err(ImageError::DimensionError)
+            Err(BitmapError::InvalidArea)
         } else {
             let rect = rect.scaled(self.scale).round();
             let cropped_image = self.image.crop(
@@ -373,7 +387,7 @@ impl Bitmap {
     }
 
     #[cfg(target_os = "macos")]
-    fn system_copy_to_pasteboard(&self) -> ImageResult<()> {
+    fn system_copy_to_pasteboard(&self) -> BitmapResult<()> {
         use cocoa::appkit::{NSImage, NSPasteboard};
         use cocoa::base::nil;
         use cocoa::foundation::{NSArray, NSData};
@@ -397,12 +411,12 @@ impl Bitmap {
     }
 
     #[cfg(windows)]
-    fn system_copy_to_pasteboard(&self) -> ImageResult<()> {
+    fn system_copy_to_pasteboard(&self) -> BitmapResult<()> {
         panic!("Unsupported OS");
     }
 
     #[cfg(target_os = "linux")]
-    fn system_copy_to_pasteboard(&self) -> ImageResult<()> {
+    fn system_copy_to_pasteboard(&self) -> BitmapResult<()> {
         panic!("Unsupported OS");
     }
 }
@@ -432,14 +446,14 @@ fn colors_match(c1: Rgba<u8>, c2: Rgba<u8>, tolerance: f64) -> bool {
 const MAX_TOLERANCE_DELTA: f64 = 441.672_955_930_1; // => (3.0f64 * 255.0f64 * 255.0f64).sqrt();
 
 /// Returns a screengrab of the entire main display.
-pub fn capture_screen() -> ImageResult<Bitmap> {
+pub fn capture_screen() -> BitmapResult<Bitmap> {
     capture_screen_portion(Rect::new(Point::ZERO, screen::size()))
 }
 
 /// Returns a screengrab of the given portion of the main display.
-pub fn capture_screen_portion(rect: Rect) -> ImageResult<Bitmap> {
+pub fn capture_screen_portion(rect: Rect) -> BitmapResult<Bitmap> {
     if !screen::is_rect_visible(rect) {
-        Err(ImageError::DimensionError)
+        Err(BitmapError::InvalidArea)
     } else {
         system_capture_screen_portion(rect)
     }
@@ -556,7 +570,7 @@ fn system_capture_screen_portion(rect: Rect) -> ImageResult<Bitmap> {
 }
 
 #[cfg(target_os = "linux")]
-fn system_capture_screen_portion(rect: Rect) -> ImageResult<Bitmap> {
+fn system_capture_screen_portion(rect: Rect) -> BitmapResult<Bitmap> {
     internal::X_MAIN_DISPLAY.with(|display| {
         let scaled_rect = rect.scaled(screen::scale());
         let root_window = unsafe {
@@ -582,7 +596,7 @@ fn system_capture_screen_portion(rect: Rect) -> ImageResult<Bitmap> {
             )
         };
         if image_ptr.is_null() {
-            return Err(ImageError::NotEnoughData);
+            return Err(BitmapError::CaptureFaild);
         }
         let image = unsafe { **image_ptr };
         let bytes_per_pixel = image.bits_per_pixel / 8;

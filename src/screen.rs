@@ -7,7 +7,7 @@
 //
 //! This module contains functions for working with the screen.
 extern crate image;
-use self::image::{GenericImageView, ImageResult, Rgba};
+use self::image::{GenericImageView, Rgba};
 use bitmap;
 use geometry::{Point, Rect, Size};
 
@@ -40,11 +40,8 @@ pub fn is_rect_visible(rect: Rect) -> bool {
 
 /// A convenience method that returns the RGB color at the given point on the
 /// main display.
-pub fn get_color(point: Point) -> ImageResult<Rgba<u8>> {
-    let bmp = bitmap::capture_screen_portion(Rect::new(
-        point,
-        Size::new(1.0, 1.0)
-    ))?;
+pub fn get_color(point: Point) -> crate::bitmap::BitmapResult<Rgba<u8>> {
+    let bmp = bitmap::capture_screen_portion(Rect::new(point, Size::new(1.0, 1.0)))?;
     Ok(bmp.image.get_pixel(0, 0))
 }
 
