@@ -18,7 +18,7 @@ jobs:
 
     steps:
     - name: Install
-      run: sudo apt-get install libxtst6
+      run: sudo apt-get install libxtst-dev
     - uses: actions/checkout@v3
     - name: Format
       run: cargo fmt --verbose -- --check
